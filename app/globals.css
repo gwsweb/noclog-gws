@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  background-color: #0a0c0f;
+  color: #c8d4e0;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #0a0c0f; }
+::-webkit-scrollbar-thumb { background: #1e2530; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #2a3545; }
+
+/* Log row highlight variants */
+.log-error   { border-left: 2px solid #ef4444; background: rgba(239,68,68,0.04); }
+.log-success { border-left: 2px solid #22c55e; background: rgba(34,197,94,0.04); }
+.log-disconnect { border-left: 2px solid #f97316; background: rgba(249,115,22,0.04); }
+.log-warning { border-left: 2px solid #eab308; background: rgba(234,179,8,0.04); }
+.log-info    { border-left: 2px solid #3b82f6; background: rgba(59,130,246,0.03); }
+
+.log-error   .log-level { color: #ef4444; }
+.log-success .log-level { color: #22c55e; }
+.log-disconnect .log-level { color: #f97316; }
+.log-warning .log-level { color: #eab308; }
+.log-info    .log-level { color: #3b82f6; }
+
+/* Pulse dot */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.pulse-dot { animation: pulse-dot 1.4s ease-in-out infinite; }
+
+/* New log entry flash */
+@keyframes log-flash {
+  from { background-color: rgba(59,130,246,0.08); }
+  to   { background-color: transparent; }
+}
+.log-new { animation: log-flash 0.8s ease-out forwards; }
