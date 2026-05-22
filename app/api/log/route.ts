@@ -35,35 +35,36 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   }
 
-  // --- Parse body ---
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
+  // --- Parse body: accept both JSON and plain text ---
+  let messages: string[] = [];
 
-  if (typeof body !== "object" || body === null) {
-    return NextResponse.json({ error: "Bad request" }, { status: 400 });
-  }
+  const contentType = req.headers.get("content-type") ?? "";
 
-  // Accept both single { message } and batch { messages: [] }
-  const messages: string[] = [];
+  if (contentType.includes("application/json")) {
+    let body: unknown;
+    try {
+      const text = await req.text();
+      body = JSON.parse(text);
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    }
 
-  const b = body as Record<string, unknown>;
-
-  if (typeof b.message === "string" && b.message.trim()) {
-    messages.push(b.message.trim());
-  } else if (Array.isArray(b.messages)) {
-    for (const m of b.messages) {
-      if (typeof m === "string" && m.trim()) messages.push(m.trim());
+    const b = body as Record<string, unknown>;
+    if (typeof b.message === "string" && b.message.trim()) {
+      messages.push(b.message.trim());
+    } else if (Array.isArray(b.messages)) {
+      for (const m of b.messages) {
+        if (typeof m === "string" && m.trim()) messages.push(m.trim());
+      }
     }
   } else {
-    return NextResponse.json({ error: "No message provided" }, { status: 400 });
+    // Accept plain text body as the message
+    const text = (await req.text()).trim();
+    if (text) messages.push(text);
   }
 
   if (messages.length === 0) {
-    return NextResponse.json({ error: "Empty message" }, { status: 400 });
+    return NextResponse.json({ error: "No message" }, { status: 400 });
   }
 
   // --- Filter + store ---
@@ -78,9 +79,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (stored > 0) {
-    // Trim to MAX_LOGS
     pipeline.ltrim(LOGS_KEY, 0, MAX_LOGS - 1);
-    // Set expiry (rolling reset on each write)
     pipeline.expire(LOGS_KEY, 7200);
     await pipeline.exec();
   }
@@ -88,7 +87,6 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true, stored }, { status: 200 });
 }
 
-// Health check
 export async function GET() {
   return NextResponse.json({ status: "ok", service: "NOC Log Ingest" });
 }
