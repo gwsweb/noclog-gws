@@ -44,7 +44,7 @@ export default function Home() {
           {[
             "Authentication Monitor",
             "Live Connection Tracking",
-            "ETH7 + VLAN2027",
+            "PoP Updates",
             "Realtime Updates",
           ].map(f => (
             <span key={f}
