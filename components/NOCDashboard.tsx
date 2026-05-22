@@ -30,37 +30,24 @@ const LEVEL_CLASS: Record<LogLevel, string> = {
   info:       "log-info",
 };
 
-const IFACE_COLORS: Record<string, string> = {
-  "ETH7":       "text-yellow-400",
-  "VLAN2027-1": "text-orange-400",
-  "VLAN2027-2": "text-pink-400",
-};
-
-function ifaceColor(iface?: string) {
-  return IFACE_COLORS[iface ?? ""] ?? "text-[#3a5068]";
-}
-
 function fmtTime(ts: number) {
   const d = new Date(ts);
   return d.toLocaleTimeString("en-GB", { hour12: false }) +
     "." + String(d.getMilliseconds()).padStart(3, "0");
 }
 
-// Only show these two levels — everything else is hidden
 const VISIBLE_LEVELS: LogLevel[] = ["error", "success"];
-
 const POLL_INTERVAL = 3000;
 const MAX_DISPLAY   = 200;
 
 export default function NOCDashboard() {
-  const [logs, setLogs]               = useState<LogEntry[]>([]);
-  const [paused, setPaused]           = useState(false);
-  const [search, setSearch]           = useState("");
-
-  const [autoScroll, setAutoScroll]   = useState(true);
-  const [lastUpdate, setLastUpdate]   = useState<number>(0);
-  const [pollStatus, setPollStatus]   = useState<"live" | "error" | "idle">("idle");
-  const [stats, setStats] = useState({ total: 0, errors: 0, success: 0, eth7: 0, vlan: 0 });
+  const [logs, setLogs]             = useState<LogEntry[]>([]);
+  const [paused, setPaused]         = useState(false);
+  const [search, setSearch]         = useState("");
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState<number>(0);
+  const [pollStatus, setPollStatus] = useState<"live" | "error" | "idle">("idle");
+  const [stats, setStats] = useState({ total: 0, errors: 0, success: 0 });
 
   const logEndRef    = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -74,19 +61,13 @@ export default function NOCDashboard() {
       total:   visible.length,
       errors:  visible.filter(e => e.level === "error").length,
       success: visible.filter(e => e.level === "success").length,
-      eth7:    visible.filter(e => e.iface === "ETH7").length,
-      vlan:    visible.filter(e => e.iface?.startsWith("VLAN2027")).length,
     });
   }, []);
 
   const fetchLogs = useCallback(async () => {
     if (pausedRef.current) return;
     try {
-      const since = latestTsRef.current;
-      const url   = since > 0
-        ? `/api/logs?limit=${MAX_DISPLAY}&since=${since}`
-        : `/api/logs?limit=${MAX_DISPLAY}`;
-      const res  = await fetch(url, { cache: "no-store" });
+      const res  = await fetch(`/api/logs?limit=${MAX_DISPLAY}`, { cache: "no-store" });
       if (!res.ok) { setPollStatus("error"); return; }
       const data: { logs: LogEntry[] } = await res.json();
       if (data.logs?.length > 0) {
@@ -101,33 +82,14 @@ export default function NOCDashboard() {
           return merged;
         });
         setLastUpdate(Date.now());
-        setPollStatus("live");
-      } else {
-        setPollStatus("live");
       }
+      setPollStatus("live");
     } catch {
       setPollStatus("error");
     }
   }, [updateStats]);
 
-  useEffect(() => {
-    const loadAll = async () => {
-      try {
-        const res  = await fetch(`/api/logs?limit=${MAX_DISPLAY}`);
-        if (!res.ok) return;
-        const data: { logs: LogEntry[] } = await res.json();
-        if (data.logs?.length > 0) {
-          const ordered = [...data.logs].reverse();
-          setLogs(ordered);
-          latestTsRef.current = Math.max(...ordered.map(e => e.ts));
-          updateStats(ordered);
-          setLastUpdate(Date.now());
-          setPollStatus("live");
-        }
-      } catch { /* silent */ }
-    };
-    loadAll();
-  }, [updateStats]);
+  useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
   useEffect(() => {
     const timer = setInterval(fetchLogs, POLL_INTERVAL);
@@ -148,17 +110,15 @@ export default function NOCDashboard() {
   const clearLogs = () => {
     setLogs([]);
     latestTsRef.current = 0;
-    setStats({ total: 0, errors: 0, success: 0, eth7: 0, vlan: 0 });
+    setStats({ total: 0, errors: 0, success: 0 });
   };
 
-  // Filter: only AUTH FAIL + CONNECTED, then apply search + iface
   const filteredLogs = logs.filter(log => {
     if (!VISIBLE_LEVELS.includes(log.level)) return false;
-    const matchSearch = search === "" ||
+    return search === "" ||
       log.message.toLowerCase().includes(search.toLowerCase()) ||
       (log.user?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
       (log.ip?.includes(search) ?? false);
-    return matchSearch;
   });
 
   const sinceText = lastUpdate > 0
@@ -168,26 +128,17 @@ export default function NOCDashboard() {
   return (
     <div className="flex flex-col h-screen bg-[#0a0c0f] text-[#c8d4e0] font-sans overflow-hidden">
 
-      {/* ─── TOP BAR ─── */}
       <header className="flex-none border-b border-[#1e2530] bg-[#0f1216]">
         <div className="flex items-center justify-between px-4 py-2">
-          <div className="flex items-center gap-3">
-            <div className="flex flex-col">
-              <span className="text-xs font-semibold tracking-[0.2em] text-[#3a7abf] uppercase">GWS Datacenters · NOC</span>
-              <span className="text-[10px] text-[#4a5a6a] tracking-widest font-mono uppercase">
-                PPPoE Auth Monitor · ETH7 &amp; VLAN2027
-              </span>
-            </div>
+          <div className="flex flex-col">
+            <span className="text-xs font-semibold tracking-[0.2em] text-[#3a7abf] uppercase">GWS Datacenters · NOC</span>
+            <span className="text-[10px] text-[#4a5a6a] tracking-widest font-mono uppercase">PPPoE Auth Monitor · All Interfaces</span>
           </div>
-
           <div className="flex items-center gap-4">
             <div className="hidden sm:flex items-center gap-3 text-[11px] font-mono">
               <StatBadge label="TOTAL"     value={stats.total}   color="text-[#4a8abf]" />
               <StatBadge label="AUTH FAIL" value={stats.errors}  color="text-red-400" />
               <StatBadge label="CONNECTED" value={stats.success} color="text-green-400" />
-              <span className="text-[#1e2530]">|</span>
-              <StatBadge label="ETH7"      value={stats.eth7}    color="text-yellow-400" />
-              <StatBadge label="VLAN2027"  value={stats.vlan}    color="text-orange-400" />
             </div>
             <div className="flex items-center gap-1.5">
               <span className={`w-1.5 h-1.5 rounded-full pulse-dot ${
@@ -205,10 +156,7 @@ export default function NOCDashboard() {
           </div>
         </div>
 
-        {/* ─── CONTROLS ─── */}
         <div className="flex items-center gap-2 px-4 py-2 border-t border-[#1e2530] flex-wrap">
-
-          {/* Search */}
           <div className="relative min-w-[150px] max-w-xs flex-1">
             <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#4a5a6a]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -220,14 +168,11 @@ export default function NOCDashboard() {
             {search && <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#4a5a6a] hover:text-[#c8d4e0]">✕</button>}
           </div>
 
-          {/* Level indicator pills — read only, not filters */}
           <div className="flex gap-1.5 items-center">
             <span className="text-[10px] font-mono text-[#2a3545] uppercase tracking-wider">Showing:</span>
             <span className="text-[10px] font-mono px-2 py-1 rounded border bg-red-900/20 border-red-800 text-red-400 uppercase tracking-wider">Auth Fail</span>
             <span className="text-[10px] font-mono px-2 py-1 rounded border bg-green-900/20 border-green-800 text-green-400 uppercase tracking-wider">Connected</span>
           </div>
-
-
 
           <div className="flex gap-1.5 ml-auto">
             <button onClick={() => setPaused(p => !p)}
@@ -252,17 +197,15 @@ export default function NOCDashboard() {
         </div>
       </header>
 
-      {/* ─── COLUMN HEADERS ─── */}
       <div className="flex-none flex items-center px-4 py-1 bg-[#0d1017] border-b border-[#1e2530] text-[10px] font-mono text-[#2a3545] uppercase tracking-widest">
         <span className="w-[86px]">Time</span>
         <span className="w-[78px]">Status</span>
-        <span className="w-[100px] hidden sm:block">Port</span>
+        <span className="w-[110px] hidden sm:block">Interface</span>
         <span className="w-[130px] hidden md:block">User</span>
         <span className="w-[110px] hidden lg:block">IP Address</span>
         <span className="flex-1">Message</span>
       </div>
 
-      {/* ─── LOG VIEWPORT ─── */}
       <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto overflow-x-hidden">
         {filteredLogs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-[#2a3545]">
@@ -272,7 +215,7 @@ export default function NOCDashboard() {
             <div className="text-center">
               <p className="text-sm font-mono">No events yet</p>
               <p className="text-[11px] mt-1 text-[#1e2530]">
-                {search ? "No results match your search" : "Waiting for auth / connect events..."}
+                {search ? "No results match your search" : "Waiting for PPPoE auth / connect events..."}
               </p>
             </div>
           </div>
@@ -286,9 +229,8 @@ export default function NOCDashboard() {
         <div ref={logEndRef} />
       </div>
 
-      {/* ─── FOOTER ─── */}
       <footer className="flex-none flex items-center justify-between px-4 py-1.5 bg-[#0d1017] border-t border-[#1e2530] text-[10px] font-mono text-[#2a3545]">
-        <span>{filteredLogs.length} events · Auth Fail + Connected only · Max 200</span>
+        <span>{filteredLogs.length} events · Auth Fail + Connected · All Interfaces · Max 200</span>
         <span className="hidden sm:inline">Poll {POLL_INTERVAL/1000}s · {new Date().toLocaleDateString("en-GB")}</span>
         <span className="text-[#1a2530]">Innocodes · GWS Datacenters</span>
       </footer>
@@ -301,9 +243,7 @@ function LogRow({ log, isNew }: { log: LogEntry; isNew: boolean }) {
     <div className={`flex items-center px-4 py-[3px] text-[11px] font-mono hover:bg-white/[0.02] transition-colors cursor-default ${LEVEL_CLASS[log.level]} ${isNew ? "log-new" : ""}`}>
       <span className="w-[86px] shrink-0 text-[#3a5a6a] select-all">{fmtTime(log.ts)}</span>
       <span className="w-[78px] shrink-0 font-semibold text-[10px] tracking-wider log-level">{LEVEL_LABEL[log.level]}</span>
-      <span className={`w-[100px] shrink-0 hidden sm:block font-semibold text-[10px] truncate ${ifaceColor(log.iface)}`}>
-        {log.iface ?? "—"}
-      </span>
+      <span className="w-[110px] shrink-0 hidden sm:block text-[#5a7a8a] text-[10px] truncate">{log.iface ?? "—"}</span>
       <span className="w-[130px] shrink-0 text-[#5a8a6a] hidden md:block truncate">{log.user ?? "—"}</span>
       <span className="w-[110px] shrink-0 text-[#3a5a7a] hidden lg:block">{log.level === "success" ? "—" : (log.ip ?? "—")}</span>
       <span className="flex-1 text-[#8a9aaa] truncate min-w-0">{log.message}</span>
