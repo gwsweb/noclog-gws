@@ -4,6 +4,8 @@ import { isPPPoELog, parseLogEntry } from "@/lib/pppoe-filter";
 
 const AUTH_TOKEN = process.env.AUTH_TOKEN!;
 const RATE_LIMIT = parseInt(process.env.RATE_LIMIT_PER_MIN ?? "120", 10);
+const DEDUP_KEY  = "noclog:dedup";
+const DEDUP_SIZE = 500;
 
 function getClientIP(req: NextRequest): string {
   return (
@@ -14,10 +16,19 @@ function getClientIP(req: NextRequest): string {
 }
 
 async function checkRateLimit(ip: string): Promise<boolean> {
-  const key = `${RATE_KEY_PREFIX}${ip}`;
+  const key   = `${RATE_KEY_PREFIX}${ip}`;
   const count = await redis.incr(key);
   if (count === 1) await redis.expire(key, 60);
   return count <= RATE_LIMIT;
+}
+
+// Simple hash for dedup key
+function msgHash(msg: string): string {
+  let h = 0;
+  for (let i = 0; i < msg.length; i++) {
+    h = (Math.imul(31, h) + msg.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h).toString(36);
 }
 
 export async function POST(req: NextRequest) {
@@ -27,7 +38,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const ip = getClientIP(req);
+  const ip      = getClientIP(req);
   const allowed = await checkRateLimit(ip);
   if (!allowed) {
     return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
@@ -38,7 +49,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Empty body" }, { status: 400 });
   }
 
-  // Support JSON or plain text (single or newline-separated)
   let messages: string[] = [];
 
   if (rawBody.startsWith("{") || rawBody.startsWith("[")) {
@@ -50,11 +60,9 @@ export async function POST(req: NextRequest) {
         messages = body.messages.filter((m: unknown) => typeof m === "string");
       }
     } catch {
-      // Fall through to plain text
       messages = rawBody.split("\n").map(l => l.trim()).filter(Boolean);
     }
   } else {
-    // Plain text — split by newline for batch support
     messages = rawBody.split("\n").map(l => l.trim()).filter(Boolean);
   }
 
@@ -62,11 +70,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No messages" }, { status: 400 });
   }
 
+  // Load dedup set from Redis
+  const dedupRaw = await redis.lrange(DEDUP_KEY, 0, DEDUP_SIZE - 1) as string[];
+  const dedupSet = new Set(dedupRaw);
+
   let stored = 0;
-  const pipeline = redis.pipeline();
+  const pipeline    = redis.pipeline();
+  const newHashes: string[] = [];
 
   for (const msg of messages) {
     if (!isPPPoELog(msg)) continue;
+    const hash = msgHash(msg);
+    if (dedupSet.has(hash)) continue; // duplicate — skip
+    dedupSet.add(hash);
+    newHashes.push(hash);
     const entry = parseLogEntry(msg);
     pipeline.lpush(LOGS_KEY, JSON.stringify(entry));
     stored++;
@@ -75,6 +92,11 @@ export async function POST(req: NextRequest) {
   if (stored > 0) {
     pipeline.ltrim(LOGS_KEY, 0, MAX_LOGS - 1);
     pipeline.expire(LOGS_KEY, 7200);
+    for (const h of newHashes) {
+      pipeline.lpush(DEDUP_KEY, h);
+    }
+    pipeline.ltrim(DEDUP_KEY, 0, DEDUP_SIZE - 1);
+    pipeline.expire(DEDUP_KEY, 3600);
     await pipeline.exec();
   }
 
