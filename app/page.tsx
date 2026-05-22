@@ -11,7 +11,6 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#0a0c0f] flex flex-col items-center justify-center relative overflow-hidden">
 
-      {/* Subtle grid background */}
       <div className="absolute inset-0 pointer-events-none"
         style={{
           backgroundImage: `linear-gradient(rgba(30,37,48,0.4) 1px, transparent 1px),
@@ -20,18 +19,15 @@ export default function Home() {
         }}
       />
 
-      {/* Glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full pointer-events-none"
         style={{ background: "radial-gradient(circle, rgba(30,80,140,0.07) 0%, transparent 70%)" }}
       />
 
       <div className="relative z-10 flex flex-col items-center gap-10 px-6 text-center">
 
-        {/* Logo / Brand */}
         <div className="flex flex-col items-center gap-3">
           <div className="flex items-center justify-center w-16 h-16 rounded-2xl border border-[#1e2530] bg-[#0f1216]"
             style={{ boxShadow: "0 0 40px rgba(30,80,140,0.15)" }}>
-            {/* Server/NOC icon */}
             <svg className="w-8 h-8 text-[#3a7abf]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                 d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
@@ -44,7 +40,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Feature pills */}
         <div className="flex flex-wrap justify-center gap-2">
           {[
             "Authentication Monitor",
@@ -59,7 +54,6 @@ export default function Home() {
           ))}
         </div>
 
-        {/* CTA Button */}
         <button
           onClick={() => setEntered(true)}
           className="group relative flex items-center gap-3 px-8 py-4 rounded-xl border border-[#2a4060] bg-[#0f1a28] text-[#c8d4e0] font-mono text-sm tracking-wider uppercase transition-all duration-200 hover:border-[#3a7abf] hover:bg-[#0f2035]"
@@ -74,7 +68,6 @@ export default function Home() {
           </svg>
         </button>
 
-        {/* Live indicator */}
         <div className="flex items-center gap-2 text-[11px] font-mono text-[#2a4a5a]">
           <span className="w-1.5 h-1.5 rounded-full bg-green-500 pulse-dot" />
           System Online · Polling every 3s
@@ -82,7 +75,6 @@ export default function Home() {
 
       </div>
 
-      {/* Footer credit */}
       <div className="absolute bottom-6 flex flex-col items-center gap-1">
         <p className="text-[10px] font-mono text-[#1e2a35] tracking-widest uppercase">
           Designed &amp; Developed by
