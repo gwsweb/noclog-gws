@@ -3,7 +3,7 @@ import { redis, LOGS_KEY, RATE_KEY_PREFIX, MAX_LOGS } from "@/lib/redis";
 import { isPPPoELog, parseLogEntry } from "@/lib/pppoe-filter";
 
 const AUTH_TOKEN = process.env.AUTH_TOKEN!;
-const RATE_LIMIT = parseInt(process.env.RATE_LIMIT_PER_MIN ?? "60", 10);
+const RATE_LIMIT = parseInt(process.env.RATE_LIMIT_PER_MIN ?? "120", 10);
 
 function getClientIP(req: NextRequest): string {
   return (
@@ -21,53 +21,47 @@ async function checkRateLimit(ip: string): Promise<boolean> {
 }
 
 export async function POST(req: NextRequest) {
-  // --- Auth ---
   const authHeader = req.headers.get("authorization") ?? "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
   if (token !== AUTH_TOKEN) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // --- Rate limit ---
   const ip = getClientIP(req);
   const allowed = await checkRateLimit(ip);
   if (!allowed) {
     return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   }
 
-  // --- Parse body: accept both JSON and plain text ---
+  const rawBody = (await req.text()).trim();
+  if (!rawBody) {
+    return NextResponse.json({ error: "Empty body" }, { status: 400 });
+  }
+
+  // Support JSON or plain text (single or newline-separated)
   let messages: string[] = [];
 
-  const contentType = req.headers.get("content-type") ?? "";
-
-  if (contentType.includes("application/json")) {
-    let body: unknown;
+  if (rawBody.startsWith("{") || rawBody.startsWith("[")) {
     try {
-      const text = await req.text();
-      body = JSON.parse(text);
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-    }
-
-    const b = body as Record<string, unknown>;
-    if (typeof b.message === "string" && b.message.trim()) {
-      messages.push(b.message.trim());
-    } else if (Array.isArray(b.messages)) {
-      for (const m of b.messages) {
-        if (typeof m === "string" && m.trim()) messages.push(m.trim());
+      const body = JSON.parse(rawBody);
+      if (typeof body.message === "string") {
+        messages = [body.message];
+      } else if (Array.isArray(body.messages)) {
+        messages = body.messages.filter((m: unknown) => typeof m === "string");
       }
+    } catch {
+      // Fall through to plain text
+      messages = rawBody.split("\n").map(l => l.trim()).filter(Boolean);
     }
   } else {
-    // Accept plain text body as the message
-    const text = (await req.text()).trim();
-    if (text) messages.push(text);
+    // Plain text — split by newline for batch support
+    messages = rawBody.split("\n").map(l => l.trim()).filter(Boolean);
   }
 
   if (messages.length === 0) {
-    return NextResponse.json({ error: "No message" }, { status: 400 });
+    return NextResponse.json({ error: "No messages" }, { status: 400 });
   }
 
-  // --- Filter + store ---
   let stored = 0;
   const pipeline = redis.pipeline();
 
