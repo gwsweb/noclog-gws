@@ -12,20 +12,19 @@ export interface LogEntry {
 
 export function isPPPoELog(message: string): boolean {
   const lower = message.toLowerCase();
-  // Ignore non-PPPoE noise
   if (/firewall|hotspot|dhcp|ospf|bgp|snmp|ipsec|ovpn/i.test(lower)) return false;
-  // Accept anything PPPoE/PPP related
-  return /pppoe|ppp|logged in|logged out|authentication|password|radius|disconnect|duplicate|discovery|session|terminated/i.test(lower);
+  return /pppoe|ppp|logged in|logged out|authentication|password|radius|disconnect|duplicate|discovery|session|terminated|connection established/i.test(lower);
 }
 
 export function classifyLog(message: string): LogLevel {
-  if (/auth.*fail|authentication failed|invalid.pass|wrong.pass|login.failed/i.test(message))
+  const lower = message.toLowerCase();
+  if (/auth.*fail|authentication failed|invalid.pass|wrong.pass|login.failed/i.test(lower))
     return "error";
-  if (/logged\s+in|session.established|connection established|connected/i.test(message))
+  if (/logged\s+in|session.established|connection established|connected|pppoe.*connect/i.test(lower))
     return "success";
-  if (/logged\s+out|disconnected|terminated/i.test(message))
+  if (/logged\s+out|disconnected|terminated/i.test(lower))
     return "disconnect";
-  if (/timeout|duplicate|radius|discovery/i.test(message))
+  if (/timeout|duplicate|radius|discovery/i.test(lower))
     return "warning";
   return "info";
 }
